@@ -31,7 +31,9 @@ import osxphotos
     help="Regex matching the album names to export ",
     default=".*",
 )
-def export(export_path, default_album, library_path, include_filter):
+@click.option('--debug', is_flag=True)
+
+def export(export_path, default_album, library_path, include_filter, debug):
     export_path = os.path.expanduser(export_path)
     library_path = os.path.expanduser(library_path) if library_path else None
 
@@ -67,41 +69,49 @@ def export(export_path, default_album, library_path, include_filter):
             if not os.path.isdir(dest_dir):
                 os.makedirs(dest_dir)
 
+            # initialize counters
+            count_copied = 0
+            count_errors = 0
+            count_existing = 0
+            count_missing = 0
+            count_copied_edited = 0
+            count_errors_edited = 0
+            count_existing_edited = 0
+            
             # export each photos in album
-            for p in photos:
-                if not p.ismissing:
-                        # export the photo
-                        #original_path, original_ext = os.path.splitext(p.original_filename)
-                        # click.echo(f"Exporting {p.original_filename} ...")
-                        if p.hasadjustments and p.path_edited:
-                            # export edited version
-                            edited_name = pathlib.Path(p.path_edited).name
-                            #edited_path, edited_ext = os.path.splitext(edited_name)
-                            #edited_filename = original_path + "_edited" + edited_ext
-                            edited_filename = edited_name
-                            if os.path.exists(os.path.join(dest_dir,edited_filename)):
-                                click.echo(f"Ignored {edited_filename} - already exist")  
-                            elif not os.path.exists(p.path_edited):
-                                click.echo(f"Can't find {p.path_edited} in library") 
-                            else: 
-                                exported = p.export(dest_dir, edited=True)
-                                #exported = p.export(dest_dir, edited_filename, edited=True)
-                                #click.echo(f"Exported {edited_filename}")
-                        # export unedited version
-                        #new_path, new_ext = os.path.splitext(p.filename)
-                        #filename = original_path + new_ext
-                        filename = p.filename                      
-                        if os.path.exists(os.path.join(dest_dir,filename)):
-                            click.echo(f"Ignored {filename} - already exist")
-                        elif not os.path.exists(p.path):
-                            click.echo(f"Can't find {p.path} in library")   
-                        else:    
-                            exported = p.export(dest_dir) 
-                            #exported = p.export(dest_dir, filename)
-                            #click.echo(f"Exported {filename}")
-                else:
-                    click.echo(f"Skipping missing photo: {p.original_filename}")
+            with click.progressbar(photos, label='Transferring photos') as photos_bar:
+                for p in photos_bar:
+                    if not p.ismissing:
+                            # export edited version (if existing)
+                            if p.hasadjustments and p.path_edited:
+                                edited_name = pathlib.Path(p.path_edited).name
+                                edited_filename = edited_name
+                                if os.path.exists(os.path.join(dest_dir,edited_filename)):
+                                    if debug: click.echo(f"Ignored {edited_filename} - already exist")  
+                                    count_existing_edited += 1
+                                elif not os.path.exists(p.path_edited):
+                                    if debug: click.echo(f"Can't find {p.path_edited} in library") 
+                                    count_errors_edited += 1
+                                else: 
+                                    exported = p.export(dest_dir, edited=True)
+                                    count_copied_edited += 1 
+                            # export normal version
+                            filename = p.filename                      
+                            if os.path.exists(os.path.join(dest_dir,filename)):
+                                if debug: click.echo(f"Ignored {filename} - already exist")
+                                count_existing += 1
+                            elif not os.path.exists(p.path):
+                                if debug: click.echo(f"Can't find {p.path} in library") 
+                                count_errors += 1  
+                            else:    
+                                exported = p.export(dest_dir)
+                                count_copied += 1 
+                    else:
+                        if debug:  click.echo(f"Skipping missing photo: {p.original_filename}")
+                        count_missing += 1 
 
+            click.echo(f"Original photos:   Copied({count_copied}) Existing({count_existing}) Errors({count_errors}) Missing({count_missing})")
+            click.echo(f"Edited photos:     Copied({count_copied_edited}) Existing({count_existing_edited}) Errors({count_errors_edited})")
             # TODO: handle photos that are not in an album
             # albums = p.albums
             # if not albums:
